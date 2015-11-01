@@ -1,0 +1,207 @@
+#!/usr/bin/perl -Tw
+#-
+# Copyright (c) 2013-2015 Universitetet i Oslo
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+# 3. The name of the author may not be used to endorse or promote
+#    products derived from this software without specific prior written
+#    permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+#
+# Author: Dag-Erling Smørgrav <d.e.smorgrav@usit.uio.no>
+#
+
+use v5.14;
+use strict;
+use warnings;
+use open qw(:locale);
+use utf8;
+
+use Getopt::Std;
+use Net::DNS;
+use Regexp::Common;
+
+our $opt_4;			# Include IPv4 addresses
+our $opt_6;			# Include IPv6 addresses
+our $opt_h;			# Print help text
+our $opt_n;			# Dry run
+our $opt_p;			# Preserve existing addresses
+our $opt_t;			# Table name
+our $opt_v;			# Verbose mode
+
+our %rrs;
+
+our %services = (
+    22	=> 'ssh',
+    53	=> 'domain',
+    80	=> 'http',
+    123	=> 'ntp',
+    443	=> 'https',
+);
+
+#
+# Print a message if in verbose mode.
+#
+sub verbose(@) {
+
+    if ($opt_v) {
+	my $msg = join('', @_);
+	$msg =~ s/\n*$/\n/s;
+	print(STDERR $msg);
+    }
+}
+
+#
+# Quote a command line so it can be printed in a form that can be
+# executed.
+#
+sub quote(@) {
+    return map {
+	m/[\\!\#\&\(\)\;\<\>\[\\\]\`\{\|\}\~\s]/ ? "'" . s/([\'\\])/\\$1/gr . "'" : $_;
+    } @_;
+}
+
+our $resolver;
+our %dns_cache;
+
+#
+# Recursively resolve CNAME, A and AAAA records for a given DNS name
+#
+sub dns_lookup($);
+sub dns_lookup($) {
+    my ($dnsname) = @_;
+
+    return $dnsname
+	if $dnsname =~ m/^($RE{net}{IPv4}|$RE{net}{IPv6})$/o;
+    if (!$dns_cache{$dnsname}) {
+	$resolver //= Net::DNS::Resolver->new;
+	verbose("# looking up $dnsname");
+	my %answers;
+	foreach my $rr ('CNAME', keys %rrs) {
+	    next unless my $query = $resolver->query($dnsname, $rr, 'IN');
+	    foreach my $res ($query->answer) {
+		verbose("# ", $res->string);
+		if ($res->type eq 'CNAME') {
+		    map({ $answers{$_}++ } dns_lookup($res->cname));
+		} elsif ($rrs{$res->type}) {
+		    $answers{$res->address}++;
+		}
+	    }
+	}
+	$dns_cache{$dnsname} = [ keys %answers ];
+    }
+    return @{$dns_cache{$dnsname}}
+}
+
+#
+# Look up an SRV record
+#
+sub srv_lookup($$;$) {
+    my ($name, $service, $transport) = @_;
+
+    $transport //= "tcp";
+    $resolver //= Net::DNS::Resolver->new;
+    my $dnsname = "_$service._$transport.$name";
+    my $type = 'SRV';
+    verbose("# looking up $type for $dnsname");
+    my $query = $resolver->query($dnsname, $type, 'IN')
+	or return ();
+    my %answers;
+    map({ $answers{$_->target}++ } $query->answer);
+    return keys %answers;
+}
+
+sub srv2pf($@) {
+    my ($table, @names) = @_;
+
+    # Targets
+    my %addresses;
+    foreach (@names) {
+	my ($name, $service, $transport) = split(':');
+	die("invalid name\n")
+	    unless $name =~ m/^($RE{net}{domain}{-nospace})\.?$/;
+	$name = $1;
+	$service //= "http,https";
+	die("invalid service\n")
+	    unless $service =~ m/^(\w+(?:,\w+)*)$/;
+	my @services = split(',', $1);
+	$transport //= "tcp";
+	die("invalid transport\n")
+	    unless $transport =~ m/^(tcp(?:,udp)?|udp(?:,tcp))$/;
+	my @transports = split(',', $1);
+	foreach $service (@services) {
+	    foreach $transport (@transports) {
+		# SRV lookup
+		map({ $addresses{$_}++ }
+		    map({ dns_lookup($_) }
+			srv_lookup($name, $service, $transport)));
+	    }
+	}
+	# fallback
+	map({ $addresses{$_}++ } dns_lookup($name));
+    }
+
+    # Create or update table
+    my @pfctl_cmd = ('/sbin/pfctl');
+    push(@pfctl_cmd, '-q')
+	unless $opt_v;
+    push(@pfctl_cmd, '-t', $table, '-T');
+    my @addresses = keys %addresses;
+    if (@addresses) {
+	push(@pfctl_cmd, $opt_p ? 'add' : 'replace', sort(@addresses));
+    } else {
+	return if $opt_p;
+	push(@pfctl_cmd, 'flush');
+    }
+    verbose(join(' ', quote(@pfctl_cmd)));
+    system(@pfctl_cmd)
+	unless $opt_n;
+}
+
+# Print usage string and exit
+sub usage() {
+
+    print(STDERR
+	  "usage: srv2pf [-46npv] -t table name[:service[:transport]] [...]\n");
+    exit(1);
+}
+
+MAIN:{
+    $ENV{PATH} = '';
+    usage() unless @ARGV;
+    if (!getopts('46hnpt:v') || $opt_h || @ARGV < 1) {
+	usage();
+    }
+
+    # Address families
+    $rrs{A} = 1 if $opt_4 || !$opt_6;
+    $rrs{AAAA} = 1 if $opt_6 || !$opt_4;
+
+    # Table
+    die("no table name specified\n")
+	unless defined($opt_t);
+    die("invalid table name\n")
+	unless $opt_t =~ m/^(\w(?:[\w-]*[\w])?)$/;
+    my $table = $1;
+
+    srv2pf($table, @ARGV);
+}
