@@ -9,7 +9,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME		=> 'UiO::SRV2PF',
-    VERSION		=> 20151101,
+    VERSION_FROM	=> 'scripts/srv2pf',
     ABSTRACT		=> 'Create and update PF tables from DNS records',
     AUTHOR		=> [ 'Dag-Erling Smørgrav <d.e.smorgrav@usit.uio.no>' ],
     MIN_PERL_VERSION	=> v5.14,

@@ -40,6 +40,8 @@ use Getopt::Std;
 use Net::DNS;
 use Regexp::Common;
 
+our $VERSION = '20151106';
+
 our $opt_4;			# Include IPv4 addresses
 our $opt_6;			# Include IPv6 addresses
 our $opt_h;			# Print help text
@@ -205,3 +207,108 @@ MAIN:{
 
     srv2pf($table, @ARGV);
 }
+
+__END__
+
+=encoding utf8
+
+=head1 NAME
+
+B<srv2pf> - Create and update PF tables from DNS records
+
+=head1 SYNOPSIS
+
+B<srv2pf> [B<-46npv>] S<B<-t> I<table>> S<I<name>[B<:>I<service>[B<:>I<transport>]]> [I<...>]
+
+=head1 DESCRIPTION
+
+The B<srv2pf> utility creates and updates PF address tables based on
+DNS records.
+
+For each name specified on the command line, the B<srv2pf> utility
+performs a DNS lookup for I<SRV>, I<CNAME>, I<A> and I<AAAA> records.
+The right-hand side of any I<SRV> and I<CNAME> records encountered are
+resolved recursively.
+
+If no errors occured during this process, a PF address table with the
+name specified on the command line is either created or updated to
+match the list of IP addresses that were found.  If the table already
+exists, its contents are replaced with the list that was obtained from
+DNS, unless the B<-p> option was specified, in which case the table is
+treated as append-only.
+
+The following options are available:
+
+=over
+
+=item B<-4>
+
+Include IPv4 addresses in the table.  If neither B<-4> nor B<-6> is
+specified, the default is to include both IPv4 and IPv6 addresses.
+
+=item B<-6>
+
+Include IPv6 addresses in the table.  If neither B<-4> nor B<-6> is
+specified, the default is to include both IPv4 and IPv6 addresses.
+
+=item B<-t> I<table>
+
+The name of the table to be created or update.  This option is
+mandatory.
+
+=item B<-n>
+
+Perform all LDAP and DNS lookups, but do not create or update any PF
+tables.
+
+=item B<-p>
+
+Preserve existing table entries even if they are not encountered in
+DNS lookups.
+
+=item B<-v>
+
+Show progress and debugging information.
+
+=back
+
+Each subsequent argument is a service specification consisting of at
+least one and at most three items, separated by colons.  The first is
+a DNS name.  The second is a comma-separated list of service names,
+which defaults to I<http,https>.  The third is a comma-separated list
+of transport protocols, which defaults to I<tcp>.  At least one
+service specification must be provided.
+
+=head1 EXAMPLES
+
+Update a table named I<ldap> used to allow traffic from the
+organization's internal network to its LDAP servers:
+
+    % grep -w ldap /etc/pf.conf
+    table <ldap> persist
+    pass in on int proto tcp from int:network to <ldap> port { ldap, ldaps }
+    pass out on dmz proto tcp from int:network to <ldap> port { ldap, ldaps }
+    % sudo srv2pf -pv -t ldap example.com:ldap:tcp
+    # looking up SRV for _ldap._tcp.example.com
+    # looking up dc01.example.com
+    # dc01.example.com. 50339   IN      AAAA    2001:db8:0:42::dc1
+    # dc01.example.com. 50339   IN      A       198.51.100.221
+    # looking up dc02.example.com
+    # dc02.example.com. 302     IN      AAAA    2001:db8:0:42::dc02
+    # dc02.example.com. 128     IN      A       198.51.100.222
+    # looking up example.com
+    /sbin/pfctl -t ldap -T add 198.51.100.221 198.51.100.222 2001:db8:0:42::dc01 2001:db8:0:42::dc02
+    No ALTQ support in kernel
+    ALTQ related functions disabled
+    4/4 addresses added.
+
+=head1 SEE ALSO
+
+L<pf(4)>, L<pfctl(8)>
+
+=head1 AUTHOR
+
+The B<srv2pf> utility was written by Dag-Erling Smørgrav
+<d.e.smorgrav@usit.uio.no> for the University of Oslo.
+
+=cut
