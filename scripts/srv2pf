@@ -40,10 +40,11 @@ use Getopt::Std;
 use Net::DNS;
 use Regexp::Common;
 
-our $VERSION = '20160530';
+our $VERSION = '20161021';
 
 our $opt_4;			# Include IPv4 addresses
 our $opt_6;			# Include IPv6 addresses
+our $opt_f;			# Save to file
 our $opt_h;			# Print help text
 our $opt_n;			# Dry run
 our $opt_p;			# Preserve existing addresses
@@ -132,8 +133,8 @@ sub srv_lookup($$;$) {
     return keys %answers;
 }
 
-sub srv2pf($@) {
-    my ($table, @names) = @_;
+sub srv2pf($$@) {
+    my ($table, $file, @names) = @_;
 
     # Targets
     my %addresses;
@@ -161,15 +162,34 @@ sub srv2pf($@) {
 	# fallback
 	map({ $addresses{$_}++ } dns_lookup($name));
     }
+    my @addresses = (sort(grep { /\./ } keys %addresses),
+		     sort(grep { /:/ } keys %addresses));
+
+    # Store addresses to file
+    if ($file) {
+	my $tmpfile = "$file.$$";
+	verbose("writing the table to $tmpfile");
+	if (!open(my $fh, ">", $opt_n ? "/dev/null" : $tmpfile)) {
+	    warn("$tmpfile: $!\n");
+	} else {
+	    print($fh join("\n", @addresses), "\n");
+	    verbose("renaming $tmpfile to $file");
+	    if (!$opt_n && !rename($tmpfile, $file)) {
+		warn("rename($tmpfile, $file): $!\n");
+		verbose("deleting $tmpfile");
+		unlink($tmpfile);
+	    }
+	    close($fh);
+	}
+    }
 
     # Create or update table
     my @pfctl_cmd = ('/sbin/pfctl');
     push(@pfctl_cmd, '-q')
 	unless $opt_v;
     push(@pfctl_cmd, '-t', $table, '-T');
-    my @addresses = keys %addresses;
     if (@addresses) {
-	push(@pfctl_cmd, $opt_p ? 'add' : 'replace', sort(@addresses));
+	push(@pfctl_cmd, $opt_p ? 'add' : 'replace', @addresses);
     } else {
 	return if $opt_p;
 	push(@pfctl_cmd, 'flush');
@@ -183,14 +203,14 @@ sub srv2pf($@) {
 sub usage() {
 
     print(STDERR
-	  "usage: srv2pf [-46npv] -t table name[:service[:transport]] [...]\n");
+	  "usage: srv2pf [-46npv] [-f file] -t table name[:service[:transport]] [...]\n");
     exit(1);
 }
 
 MAIN:{
     $ENV{PATH} = '';
     usage() unless @ARGV;
-    if (!getopts('46hnpt:v') || $opt_h || @ARGV < 1) {
+    if (!getopts('46f:hnpt:v') || $opt_h || @ARGV < 1) {
 	usage();
     }
 
@@ -203,9 +223,18 @@ MAIN:{
 	unless defined($opt_t);
     die("invalid table name\n")
 	unless $opt_t =~ m/^(\w(?:[\w-]*[\w])?)$/;
-    my $table = $1;
+    $opt_t = $1;
 
-    srv2pf($table, @ARGV);
+    # File
+    if ($opt_f) {
+	die("invalid file name\n")
+	    unless $opt_f =~ m@^(/?(?:[0-9A-Za-z._-]+/)*[0-9A-Za-z._-]+)$@;
+	$opt_f = $1;
+	$opt_f .= "/$opt_t"
+	    if -d $opt_f;
+    }
+
+    srv2pf($opt_t, $opt_f, @ARGV);
 }
 
 __END__
@@ -218,7 +247,7 @@ B<srv2pf> - Create and update PF tables from DNS records
 
 =head1 SYNOPSIS
 
-B<srv2pf> [B<-46npv>] S<B<-t> I<table>> S<I<name>[B<:>I<service>[B<:>I<transport>]]> [I<...>]
+B<srv2pf> [B<-46npv>] [S<B<-f> I<file>>] S<B<-t> I<table>> S<I<name>[B<:>I<service>[B<:>I<transport>]]> [I<...>]
 
 =head1 DESCRIPTION
 
@@ -251,6 +280,15 @@ specified, the default is to include both IPv4 and IPv6 addresses.
 Include IPv6 addresses in the table.  If neither B<-4> nor B<-6> is
 specified, the default is to include both IPv4 and IPv6 addresses.
 
+=item B<-f> I<file>
+
+Save the addresses to a file in addition to updating the table.  If
+I<file> is a directory, the addresses will be stored in a file bearing
+the name of the table within that directory.  The file is written out
+before the table is created or updated.  Failure to write the file
+will generate an error message but will not prevent the table from
+being created or updated.
+
 =item B<-t> I<table>
 
 The name of the table to be created or update.  This option is
@@ -259,12 +297,13 @@ mandatory.
 =item B<-n>
 
 Perform all LDAP and DNS lookups, but do not create or update any PF
-tables.
+tables or files.
 
 =item B<-p>
 
 Preserve existing table entries even if they are not encountered in
-DNS lookups.
+DNS lookups.  This does not apply to the file generated with the B<-f>
+option, which will only contain the addresses retrieved from DNS.
 
 =item B<-v>
 
