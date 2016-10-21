@@ -12,7 +12,7 @@ WriteMakefile(
     VERSION_FROM	=> 'scripts/srv2pf',
     ABSTRACT		=> 'Create and update PF tables from DNS records',
     AUTHOR		=> [ 'Dag-Erling Smørgrav <d.e.smorgrav@usit.uio.no>' ],
-    MIN_PERL_VERSION	=> v5.14,
+    MIN_PERL_VERSION	=> '5.014',
     PREREQ_PM		=> {
 	'Net::DNS'		=> 0,
 	'Regexp::Common'	=> 0,
