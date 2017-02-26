@@ -40,7 +40,7 @@ use Getopt::Std;
 use Net::DNS;
 use Regexp::Common;
 
-our $VERSION = '20161021';
+our $VERSION = '20170226';
 
 our $opt_4;			# Include IPv4 addresses
 our $opt_6;			# Include IPv6 addresses
@@ -172,7 +172,8 @@ sub srv2pf($$@) {
 	if (!open(my $fh, ">", $opt_n ? "/dev/null" : $tmpfile)) {
 	    warn("$tmpfile: $!\n");
 	} else {
-	    print($fh join("\n", @addresses), "\n");
+	    print($fh join("\n", @addresses), "\n")
+		if @addresses;
 	    verbose("renaming $tmpfile to $file");
 	    if (!$opt_n && !rename($tmpfile, $file)) {
 		warn("rename($tmpfile, $file): $!\n");
