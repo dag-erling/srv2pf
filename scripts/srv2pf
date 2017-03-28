@@ -40,7 +40,7 @@ use Getopt::Std;
 use Net::DNS;
 use Regexp::Common;
 
-our $VERSION = '20170226';
+our $VERSION = '20170328';
 
 our $opt_4;			# Include IPv4 addresses
 our $opt_6;			# Include IPv6 addresses
@@ -162,8 +162,9 @@ sub srv2pf($$@) {
 	# fallback
 	map({ $addresses{$_}++ } dns_lookup($name));
     }
-    my @addresses = (sort(grep { /\./ } keys %addresses),
-		     sort(grep { /:/ } keys %addresses));
+    my @addresses = keys %addresses;
+    @addresses = (sort(grep { /\./ } @addresses),
+		  sort(grep { /:/ } @addresses));
 
     # Store addresses to file
     if ($file) {
