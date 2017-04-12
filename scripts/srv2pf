@@ -173,17 +173,27 @@ sub srv2pf($$@) {
 
     # Store addresses to file
     if ($file) {
+	my ($filetext, $tmpfiletext);
 	my $tmpfile = "$file.$$";
-	verbose("writing the table to $tmpfile");
-	if (!open(my $fh, ">", $opt_n ? "/dev/null" : $tmpfile)) {
+	if (open(my $fh, "<", $file)) {
+	    local $/;
+	    $filetext = <$fh>;
+	    close($fh);
+	} else {
+	    $filetext = "";
+	}
+	$tmpfiletext = @addresses ? join("\n", @addresses) . "\n" : "";
+	if ($filetext eq $tmpfiletext) {
+	    verbose("# $file has not changed");
+	} elsif (!open(my $fh, ">", $opt_n ? "/dev/null" : $tmpfile)) {
 	    warn("$tmpfile: $!\n");
 	} else {
-	    print($fh join("\n", @addresses), "\n")
-		if @addresses;
-	    verbose("renaming $tmpfile to $file");
+	    verbose("# writing the table to $tmpfile");
+	    print($fh $tmpfiletext);
+	    verbose("# renaming $tmpfile to $file");
 	    if (!$opt_n && !rename($tmpfile, $file)) {
 		warn("rename($tmpfile, $file): $!\n");
-		verbose("deleting $tmpfile");
+		verbose("# deleting $tmpfile");
 		unlink($tmpfile);
 	    }
 	    close($fh);
