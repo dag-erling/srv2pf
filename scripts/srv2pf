@@ -256,7 +256,7 @@ MAIN:{
     die("no table name specified\n")
 	unless defined($opt_t);
     die("invalid table name\n")
-	unless $opt_t =~ m/^(\w(?:[\w-]*[\w])?)$/;
+	unless $opt_t =~ m/^(\w(?:[\w-]*\w)?)$/;
     $opt_t = $1;
 
     # Preserve implies no-flush
