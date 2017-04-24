@@ -38,9 +38,15 @@ use utf8;
 
 use Getopt::Std;
 use Net::DNS;
-use Regexp::Common;
+use Regexp::Common qw(pattern);
 
 our $VERSION = '20170412';
+
+# Regexp for paths (POSIX portable filename character set)
+pattern
+    name => [ qw(path pfcs) ],
+    create => '/?(?:[0-9A-Za-z._-]+/)*[0-9A-Za-z._-]+',
+    ;
 
 our $opt_4;			# Include IPv4 addresses
 our $opt_6;			# Include IPv6 addresses
@@ -248,7 +254,7 @@ MAIN:{
     # File
     if ($opt_f) {
 	die("invalid file name\n")
-	    unless $opt_f =~ m@^(/?(?:[0-9A-Za-z._-]+/)*[0-9A-Za-z._-]+)$@;
+	    unless $opt_f =~ m/^($RE{path}{pfcs})$/o;
 	$opt_f = $1;
 	$opt_f .= "/$opt_t"
 	    if -d $opt_f;
