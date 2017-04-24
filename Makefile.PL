@@ -16,6 +16,7 @@ WriteMakefile(
     PREREQ_PM		=> {
 	'Net::DNS'		=> 0,
 	'Regexp::Common'	=> 0,
+	'Try::Tiny'		=> 0,
     },
     PREREQ_FATAL	=> 1,
     EXE_FILES		=> [

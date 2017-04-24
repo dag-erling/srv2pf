@@ -39,6 +39,7 @@ use utf8;
 use Getopt::Std;
 use Net::DNS;
 use Regexp::Common qw(pattern);
+use Try::Tiny;
 
 our $VERSION = '20170412';
 
@@ -191,18 +192,27 @@ sub srv2pf($$@) {
 	$tmpfiletext = @addresses ? join("\n", @addresses) . "\n" : "";
 	if ($filetext eq $tmpfiletext) {
 	    verbose("# $file has not changed");
-	} elsif (!open(my $fh, ">", $opt_n ? "/dev/null" : $tmpfile)) {
+	} elsif (!$opt_n && !open(my $fh, ">", $tmpfile)) {
 	    warn("$tmpfile: $!\n");
 	} else {
-	    verbose("# writing the table to $tmpfile");
-	    print($fh $tmpfiletext);
-	    verbose("# renaming $tmpfile to $file");
-	    if (!$opt_n && !rename($tmpfile, $file)) {
-		warn("rename($tmpfile, $file): $!\n");
+	    try {
+		verbose("# writing the table to $tmpfile");
+		if (!$opt_n && !print($fh $tmpfiletext)) {
+		    die("print($tmpfile): $!\n");
+		}
+		verbose("# renaming $tmpfile to $file");
+		if (!$opt_n && !rename($tmpfile, $file)) {
+		    die("rename($tmpfile, $file): $!\n");
+		}
+	    } catch {
+		warn($_);
 		verbose("# deleting $tmpfile");
 		unlink($tmpfile);
-	    }
-	    close($fh);
+	    } finally {
+		if (!$opt_n) {
+		    close($fh);
+		}
+	    };
 	}
     }
 
@@ -218,8 +228,9 @@ sub srv2pf($$@) {
 	push(@pfctl_cmd, 'flush');
     }
     verbose(join(' ', quote(@pfctl_cmd)));
-    system(@pfctl_cmd)
-	unless $opt_n;
+    if (!$opt_n) {
+	system(@pfctl_cmd);
+    }
 }
 
 # Print usage string and exit
