@@ -242,6 +242,9 @@ MAIN:{
 	unless $opt_t =~ m/^(\w(?:[\w-]*[\w])?)$/;
     $opt_t = $1;
 
+    # Preserve implies no-flush
+    $opt_F ||= $opt_p;
+
     # File
     if ($opt_f) {
 	die("invalid file name\n")
@@ -325,8 +328,10 @@ tables or files.
 =item B<-p>
 
 Preserve existing table entries even if they are not encountered in
-DNS lookups.  This does not apply to the file generated with the B<-f>
-option, which will only contain the addresses retrieved from DNS.
+DNS lookups.  Implies B<-F>.
+
+This does not apply to the file generated with the B<-f> option, which
+will only contain the addresses retrieved from DNS.
 
 =item B<-v>
 
