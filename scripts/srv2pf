@@ -41,7 +41,7 @@ use Net::DNS;
 use Regexp::Common qw(pattern);
 use Try::Tiny;
 
-our $VERSION = '20170424';
+our $VERSION = '20170607';
 
 # Regexp for paths (POSIX portable filename character set)
 pattern
@@ -147,15 +147,22 @@ sub srv2pf($$@) {
     # Targets
     my %addresses;
     foreach (@names) {
+	if (m/^($RE{net}{IPv4}|$RE{net}{IPv6})$/ || m/^\[($RE{net}{IPv6})\]$/) {
+	    $addresses{$1}++;
+	    next;
+	} elsif (m/^($RE{net}{domain}{-nospace})\.?$/) {
+	    map({ $addresses{$_}++ } dns_lookup($1));
+	    next;
+	}
 	my ($name, $service, $transport) = split(':');
 	die("invalid name\n")
 	    unless $name =~ m/^($RE{net}{domain}{-nospace})\.?$/;
 	$name = $1;
-	$service //= "http,https";
+	$service ||= "http,https";
 	die("invalid service\n")
 	    unless $service =~ m/^(\w+(?:,\w+)*)$/;
 	my @services = split(',', $1);
-	$transport //= "tcp";
+	$transport ||= "tcp";
 	die("invalid transport\n")
 	    unless $transport =~ m/^(tcp(?:,udp)?|udp(?:,tcp))$/;
 	my @transports = split(',', $1);
@@ -356,12 +363,13 @@ Show progress and debugging information.
 
 =back
 
-Each subsequent argument is a service specification consisting of at
-least one and at most three items, separated by colons.  The first is
-a DNS name.  The second is a comma-separated list of service names,
-which defaults to I<http,https>.  The third is a comma-separated list
-of transport protocols, which defaults to I<tcp>.  At least one
-service specification must be provided.
+Each subsequent argument is either a DNS name or IP address, or a
+service specification consisting of at least two and at most three
+items, separated by colons.  The first item is a DNS name.  The second
+is a comma-separated list of service names, which defaults to
+I<http,https>.  The third is a comma-separated list of transport
+protocols, which defaults to I<tcp>.  At least one service
+specification must be provided.
 
 =head1 EXAMPLES
 
