@@ -42,7 +42,7 @@ use Net::DNS;
 use Regexp::Common qw(pattern);
 use Try::Tiny;
 
-our $VERSION = '20170607';
+our $VERSION = '20211010';
 
 # Regexp for paths (POSIX portable filename character set)
 pattern
