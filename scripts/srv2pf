@@ -73,8 +73,7 @@ our %services = (
 #
 # Print a message if in verbose mode.
 #
-sub verbose(@) {
-
+sub verbose {
     if ($opt_v) {
 	my $msg = join('', @_);
 	$msg =~ s/\n*$/\n/s;
@@ -86,7 +85,7 @@ sub verbose(@) {
 # Quote a command line so it can be printed in a form that can be
 # executed.
 #
-sub quote(@) {
+sub quote {
     return map {
 	m/[!\#\$\&\(\)\;\<\>\[\\\]\`\{\|\}\~\s]/ ? "'" . s/([\'\\])/\\$1/gr . "'" : $_;
     } @_;
@@ -98,8 +97,7 @@ our %dns_cache;
 #
 # Recursively resolve CNAME, A and AAAA records for a given DNS name
 #
-sub dns_lookup($);
-sub dns_lookup($) {
+sub dns_lookup {
     my ($dnsname) = @_;
 
     return $dnsname
@@ -127,7 +125,7 @@ sub dns_lookup($) {
 #
 # Look up an SRV record
 #
-sub srv_lookup($$;$) {
+sub srv_lookup {
     my ($name, $service, $transport) = @_;
 
     $transport //= "tcp";
@@ -142,7 +140,7 @@ sub srv_lookup($$;$) {
     return keys %answers;
 }
 
-sub srv2pf($$@) {
+sub srv2pf {
     my ($table, $file, @names) = @_;
 
     # Targets
@@ -242,8 +240,7 @@ sub srv2pf($$@) {
 }
 
 # Print usage string and exit
-sub usage() {
-
+sub usage {
     print(STDERR
 	  "usage: srv2pf [-46Fnpv] [-f file] -t table name[:service[:transport]] [...]\n");
     exit(1);
