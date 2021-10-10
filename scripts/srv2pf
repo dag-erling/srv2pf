@@ -114,6 +114,8 @@ sub dns_lookup {
 		    map({ $answers{$_}++ } dns_lookup($res->cname));
 		} elsif ($rrs{$res->type}) {
 		    $answers{$res->address}++;
+		} else {
+		    # can't happen
 		}
 	    }
 	}
@@ -136,7 +138,16 @@ sub srv_lookup {
     my $query = $resolver->query($dnsname, $type, 'IN')
 	or return ();
     my %answers;
-    map({ $answers{$_->target}++ } $query->answer);
+    foreach my $res ($query->answer) {
+	verbose("# ", $res->string =~ s/\s+/ /gr);
+	if ($res->type eq 'CNAME') {
+	    $answers{$res->cname}++;
+	} elsif ($res->type eq 'SRV') {
+	    $answers{$res->target}++;
+	} else {
+	    # can't happen
+	}
+    }
     return keys %answers;
 }
 
